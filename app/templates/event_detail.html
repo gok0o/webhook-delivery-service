@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Event {{ event.id[:8] }} — Webhook Service{% endblock %}
+{% block content %}
+
+<p style="margin-bottom: 12px;"><a href="/dashboard">← Back to Events</a></p>
+
+<h1>Event Detail</h1>
+
+<div class="card">
+    <table style="box-shadow: none;">
+        <tr>
+            <th style="width: 160px;">Event ID</th>
+            <td class="mono">{{ event.id }}</td>
+        </tr>
+        <tr>
+            <th>Type</th>
+            <td><code style="background:#f0f0f0; padding:2px 6px; border-radius:4px;">{{ event.event_type }}</code></td>
+        </tr>
+        <tr>
+            <th>Created At</th>
+            <td>{{ event.created_at[:19].replace("T", " ") }} UTC</td>
+        </tr>
+        <tr>
+            <th>Payload</th>
+            <td><pre>{{ event.payload | tojson(indent=2) }}</pre></td>
+        </tr>
+    </table>
+</div>
+
+<h2>Delivery Attempts ({{ event.attempts|length }})</h2>
+
+{% if event.attempts %}
+<table>
+    <thead>
+        <tr>
+            <th>Attempt ID</th>
+            <th>Target URL</th>
+            <th>Status</th>
+            <th>Attempt #</th>
+            <th>HTTP Code</th>
+            <th>Next Retry</th>
+            <th>Error</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for attempt in event.attempts %}
+        <tr>
+            <td class="mono">{{ attempt.id[:8] }}…</td>
+            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span title="{{ attempt.target_url }}">{{ attempt.target_url }}</span>
+            </td>
+            <td>
+                <span class="badge
+                    {% if attempt.status == 'success' %}badge-success
+                    {% elif attempt.status == 'failed' %}badge-failed
+                    {% elif attempt.status == 'retrying' %}badge-retrying
+                    {% else %}badge-pending{% endif %}">
+                    {{ attempt.status }}
+                </span>
+            </td>
+            <td style="text-align: center;">{{ attempt.attempt_number }}</td>
+            <td style="text-align: center;">
+                {% if attempt.response_code %}
+                    <span style="font-weight: 600; color:
+                        {% if attempt.response_code < 300 %}#16a34a
+                        {%elif attempt.response_code < 500 %}#92400e
+                        {%else %}#991b1b{% endif %}">
+                        {{ attempt.response_code }}
+                    </span>
+                {% else %}—{% endif %}
+            </td>
+            <td class="mono" style="font-size: 11px;">
+                {% if attempt.next_retry_at %}
+                    {{ attempt.next_retry_at[:19].replace("T", " ") }}
+                {% else %}—{% endif %}
+            </td>
+            <td style="max-width: 180px; font-size: 12px; color: #666;">
+                {{ attempt.error_message or "—" }}
+            </td>
+            <td>
+                {% if attempt.status == 'failed' %}
+                <button type="button"
+                        class="btn btn-danger"
+                        style="font-size:12px; padding:4px 10px;"
+                        onclick="retryAttempt('{{ attempt.id }}', this)">
+                    Retry
+                </button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card">
+    <p class="empty">No delivery attempts yet — the worker will pick this up shortly.</p>
+</div>
+{% endif %}
+
+<script>
+async function retryAttempt(attemptId, btn) {
+    btn.disabled = true;
+    btn.textContent = "Retrying…";
+    try {
+        const resp = await fetch(`/api/deliveries/${attemptId}/retry`, {
+            method: "POST",
+            headers: { "X-API-Key": "secret-admin-key", "Content-Type": "application/json" },
+            body: "{}"
+        });
+        if (resp.ok) {
+            btn.textContent = "✓ Queued";
+            btn.style.background = "#16a34a";
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            const data = await resp.json();
+            alert("Error: " + (data.detail || "Unknown error"));
+            btn.disabled = false;
+            btn.textContent = "Retry";
+        }
+    } catch (e) {
+        alert("Network error: " + e.message);
+        btn.disabled = false;
+        btn.textContent = "Retry";
+    }
+}
+</script>
+
+{% endblock %}

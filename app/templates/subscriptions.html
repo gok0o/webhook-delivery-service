@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Subscriptions — Webhook Service{% endblock %}
+{% block content %}
+
+<h1>Subscriptions</h1>
+
+<div class="card" style="margin-bottom: 24px;">
+    <h2 style="margin-bottom: 16px;">Add Subscription</h2>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end;">
+        <div>
+            <label style="display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px;">Target URL</label>
+            <input id="target-url" type="url" placeholder="https://example.com/webhook"
+                   style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
+        </div>
+        <div>
+            <label style="display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px;">Event Filter</label>
+            <input id="event-filter" type="text" placeholder="* or order.* or order.created" value="*"
+                   style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
+        </div>
+        <div>
+            <label style="display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px;">Secret (optional)</label>
+            <input id="secret" type="text" placeholder="hmac signing secret"
+                   style="width:100%; padding:8px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="createSubscription()">Add</button>
+        </div>
+    </div>
+    <div id="create-msg" style="margin-top:10px; font-size:13px;"></div>
+</div>
+
+{% if subscriptions %}
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Target URL</th>
+            <th>Filter</th>
+            <th>Has Secret</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sub in subscriptions %}
+        <tr id="row-{{ sub.id }}">
+            <td class="mono">{{ sub.id[:8] }}…</td>
+            <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span title="{{ sub.target_url }}">{{ sub.target_url }}</span>
+            </td>
+            <td><code style="background:#f0f0f0; padding:2px 6px; border-radius:4px;">{{ sub.event_filter }}</code></td>
+            <td>{% if sub.secret %}✓{% else %}—{% endif %}</td>
+            <td>
+                <span class="badge {% if sub.is_active %}badge-success{% else %}badge-failed{% endif %}">
+                    {% if sub.is_active %}active{% else %}inactive{% endif %}
+                </span>
+            </td>
+            <td>{{ sub.created_at[:10] }}</td>
+            <td>
+                {% if sub.is_active %}
+                <button class="btn btn-danger" style="font-size:12px; padding:4px 10px;"
+                        onclick="deleteSubscription('{{ sub.id }}', this)">
+                    Delete
+                </button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card">
+    <p class="empty">No subscriptions yet. Add one above.</p>
+</div>
+{% endif %}
+
+<script>
+const API_KEY = "secret-admin-key";
+
+async function createSubscription() {
+    const url = document.getElementById("target-url").value.trim();
+    const filter = document.getElementById("event-filter").value.trim();
+    const secret = document.getElementById("secret").value.trim();
+    const msg = document.getElementById("create-msg");
+
+    if (!url) { msg.textContent = "Target URL is required."; msg.style.color = "red"; return; }
+
+    const body = { target_url: url, event_filter: filter || "*" };
+    if (secret) body.secret = secret;
+
+    try {
+        const resp = await fetch("/api/subscriptions", {
+            method: "POST",
+            headers: { "X-API-Key": API_KEY, "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            msg.textContent = "✓ Subscription created: " + data.id;
+            msg.style.color = "green";
+            setTimeout(() => location.reload(), 800);
+        } else {
+            msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
+            msg.style.color = "red";
+        }
+    } catch (e) {
+        msg.textContent = "Network error: " + e.message;
+        msg.style.color = "red";
+    }
+}
+
+async function deleteSubscription(subId, btn) {
+    if (!confirm("Delete this subscription?")) return;
+    btn.disabled = true;
+    btn.textContent = "Deleting…";
+    try {
+        const resp = await fetch(`/api/subscriptions/${subId}`, {
+            method: "DELETE",
+            headers: { "X-API-Key": API_KEY }
+        });
+        if (resp.ok) {
+            document.getElementById("row-" + subId).style.opacity = "0.4";
+            btn.textContent = "Deleted";
+        } else {
+            alert("Error deleting subscription");
+            btn.disabled = false;
+            btn.textContent = "Delete";
+        }
+    } catch (e) {
+        alert("Network error: " + e.message);
+        btn.disabled = false;
+        btn.textContent = "Delete";
+    }
+}
+</script>
+
+{% endblock %}
