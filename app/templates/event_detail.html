@@ -99,6 +99,9 @@
 {% endif %}
 
 <script>
+// NOTE: hardcoding the admin key here is insecure for production.
+// Acceptable for this assignment per spec (single shared key, no real auth required).
+// In production: use a session-based proxy endpoint instead.
 async function retryAttempt(attemptId, btn) {
     btn.disabled = true;
     btn.textContent = "Retrying…";
